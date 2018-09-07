@@ -18,6 +18,9 @@ export class Node {
     /** @see {@link parent} */
     protected _parent: Node | undefined = undefined;
 
+    /** @see {@link children} */
+    protected _children: Node[] = [];
+
     /** @see {@link transform} */
     protected _transform: mat4 | undefined;
 
@@ -38,7 +41,7 @@ export class Node {
 
 
     /**
-     * Default constructor
+     * Constructor
      */
     constructor(parent: Node) {
         this._parent = parent;
@@ -57,6 +60,13 @@ export class Node {
      */
     get parent(): Node | undefined {
         return this._parent;
+    }
+
+    /**
+     * Returns the list of child nodes
+     */
+    get children(): Node[] {
+        return this._children;
     }
 
     /**

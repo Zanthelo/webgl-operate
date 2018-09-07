@@ -36,4 +36,9 @@ export namespace viewer {
 }
 
 
+/* SCENE facilities */
+
+export { Scene } from './scene/scene';
+
+
 /* DEVELOPMENT facilities (should be none when publishing) */
