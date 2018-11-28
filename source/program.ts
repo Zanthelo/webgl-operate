@@ -1,10 +1,14 @@
 
+/* spellchecker: disable */
+
 import { assert, log, logIf, LogLevel } from './auxiliaries';
 
 import { Bindable } from './bindable';
 import { Initializable } from './initializable';
 import { AbstractObject } from './object';
 import { Shader } from './shader';
+
+/* spellchecker: enable */
 
 
 /**
@@ -210,7 +214,7 @@ export class Program extends AbstractObject<WebGLProgram> implements Bindable {
     @Initializable.assert_initialized()
     attribute(attribute: string, location?: GLuint): GLint {
         if (location !== undefined) {
-            logIf(this._linked, LogLevel.Info,
+            logIf(this._linked, LogLevel.Debug,
                 `name-to-generic attribute index mapping does go into effect on next linking, ` +
                 `given ${attribute} -> ${location} (${this.identifier})`);
 

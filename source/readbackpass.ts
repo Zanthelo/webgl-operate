@@ -1,4 +1,6 @@
 
+/* spellchecker: disable */
+
 import { mat4, vec3, vec4 } from 'gl-matrix';
 
 import { assert } from './auxiliaries';
@@ -15,6 +17,8 @@ import { Program } from './program';
 import { Shader } from './shader';
 import { Texture2D } from './texture2d';
 import { GLsizei2 } from './tuples';
+
+/* spellchecker: enable */
 
 
 /**
@@ -230,7 +234,6 @@ export class ReadbackPass extends Initializable {
      */
     @Initializable.assert_initialized()
     renderThenReadDepthAt(x: GLsizei, y: GLsizei): Uint8Array {
-
         assert(this._depthFBO !== undefined && this._depthFBO.valid, `valid depth FBO expected for reading back depth`);
         const texture = this._depthFBO.texture(this._depthAttachment) as Texture2D;
 
@@ -298,10 +301,22 @@ export class ReadbackPass extends Initializable {
         frag.initialize(require('./shaders/readbackdepth.frag'));
 
         this._program = new Program(this._context, 'ReadbackDepthProgram');
-        this._program.initialize([vert, frag]);
+        this._program.initialize([vert, frag], false);
+
+        if (ndcTriangle === undefined) {
+            this._ndcTriangle = new NdcFillingTriangle(this._context);
+        } else {
+            this._ndcTriangle = ndcTriangle;
+            this._ndcTriangleShared = true;
+        }
+
+        if (!this._ndcTriangle.initialized) {
+            this._ndcTriangle.initialize();
+        }
+        this._program.attribute('a_vertex', this._ndcTriangle.vertexLocation);
+        this._program.link();
 
         this._uOffset = this._program.uniform('u_offset');
-
         this._program.bind();
         gl.uniform1i(this._program.uniform('u_texture'), 0);
         this._program.unbind();
@@ -313,21 +328,6 @@ export class ReadbackPass extends Initializable {
 
         this._framebuffer = new Framebuffer(this._context, 'ReadbackFBO');
         this._framebuffer.initialize([[gl2facade.COLOR_ATTACHMENT0, this._texture]]);
-
-
-        if (ndcTriangle === undefined) {
-            this._ndcTriangle = new NdcFillingTriangle(this._context);
-        } else {
-            this._ndcTriangle = ndcTriangle;
-            this._ndcTriangleShared = true;
-        }
-
-        if (!this._ndcTriangle.initialized) {
-            const aVertex = this._program.attribute('a_vertex', 0);
-            this._ndcTriangle.initialize(aVertex);
-        } else {
-            this._program.attribute('a_vertex', this._ndcTriangle.aVertex);
-        }
 
         return true;
     }
