@@ -1,19 +1,20 @@
 
 import { assert } from '../auxiliaries';
 
-import { AccumulatePass } from '../accumulatepass';
-import { BlitPass } from '../blitpass';
+import { Camera } from '../camera';
 import { Context } from '../context';
 import { DefaultFramebuffer } from '../defaultframebuffer';
 import { Framebuffer } from '../framebuffer';
 import { MouseEventProvider } from '../mouseeventprovider';
-import { NdcFillingTriangle } from '../ndcfillingtriangle';
+import { Navigation } from '../navigation';
 import { Program } from '../program';
 import { Renderbuffer } from '../renderbuffer';
 import { Invalidate, Renderer } from '../renderer';
 import { Shader } from '../shader';
 import { Texture2D } from '../texture2d';
-import { TestNavigation } from './testnavigation';
+import { mat4, vec3 } from '../webgl-operate';
+import { Cube } from './cube';
+import { Plane } from './plane';
 
 
 namespace debug {
@@ -21,26 +22,29 @@ namespace debug {
     export class ShadowRenderer extends Renderer {
 
         protected _extensions = false;
-        protected _fillerProgram: Program;
-        protected _blurProgram: Program;
-
-        protected _ndcTriangle: NdcFillingTriangle;
-        protected _uFillerTexture: WebGLUniformLocation;
-        protected _uSize: WebGLUniformLocation;
-        protected _uKernelSize: WebGLUniformLocation;
-
-        protected _accumulate: AccumulatePass;
-        protected _blit: BlitPass;
 
         protected _defaultFBO: DefaultFramebuffer;
-        protected _fillerColorRenderTexture: Texture2D;
-        protected _fillerDepthRenderbuffer: Renderbuffer;
-        protected _fillerFBO: Framebuffer;
-        protected _blurColorRenderTexture: Texture2D;
-        protected _blurDepthRenderbuffer: Renderbuffer;
-        protected _blurFBO: Framebuffer;
+        protected _navigation: Navigation;
 
-        protected _testNavigation: TestNavigation;
+        protected _camera: Camera;
+        protected _light: Camera;
+
+        protected _cube: Cube;
+        protected _plane: Plane;
+
+        protected _intermediateFramebuffer: Framebuffer;
+        protected _intermediateColor: Texture2D;
+        protected _intermediateDepth: Renderbuffer;
+
+        protected _shadowProgram: Program;
+        protected _uLightViewProjection: WebGLUniformLocation;
+        protected _uLightModel: WebGLUniformLocation;
+
+        protected _program: Program;
+        protected _uViewProjection: WebGLUniformLocation;
+        protected _uShadowViewProjection: WebGLUniformLocation;
+        protected _uModel: WebGLUniformLocation;
+        protected _modelMatrix: WebGLUniformLocation;
 
 
         protected onInitialize(context: Context, callback: Invalidate,
@@ -62,64 +66,66 @@ namespace debug {
 
             /* Create and configure program and geometry. */
 
-            const fillerVert = new Shader(this._context, gl.VERTEX_SHADER, 'filler.vert');
-            fillerVert.initialize(require('./filler.vert'));
-            const fillerFrag = new Shader(this._context, gl.FRAGMENT_SHADER, 'filler.frag');
-            fillerFrag.initialize(require('./filler.frag'));
+            this._intermediateColor = new Texture2D(this._context, 'ColorRenderTexture');
+            this._intermediateDepth = new Renderbuffer(this._context, 'DepthRenderbuffer');
 
-            this._fillerProgram = new Program(this._context);
-            this._fillerProgram.initialize([fillerVert, fillerFrag]);
+            this._intermediateFramebuffer = new Framebuffer(this._context, 'IntermediateFBO');
 
-            const blurVert = new Shader(this._context, gl.VERTEX_SHADER, 'boxblur.vert');
-            blurVert.initialize(require('./boxblur.vert'));
-            const blurFrag = new Shader(this._context, gl.FRAGMENT_SHADER, 'boxblur.frag');
-            blurFrag.initialize(require('./boxblur.frag'));
+            const shadowVert = new Shader(this._context, gl.VERTEX_SHADER, 'shadow.vert');
+            shadowVert.initialize(require('./shadow.vert'));
+            const shadowFrag = new Shader(this._context, gl.FRAGMENT_SHADER, 'shadow.frag');
+            shadowFrag.initialize(require('./shadow.frag'));
 
-            this._blurProgram = new Program(this._context);
-            this._blurProgram.initialize([blurVert, blurFrag]);
+            this._shadowProgram = new Program(this._context);
+            this._shadowProgram.initialize([shadowVert, shadowFrag]);
 
-            this._uFillerTexture = this._blurProgram.uniform('u_Texture');
-            this._uSize = this._blurProgram.uniform('u_Size');
-            this._uKernelSize = this._blurProgram.uniform('u_KernelSize');
+            const vert = new Shader(this._context, gl.VERTEX_SHADER, 'simple.vert');
+            vert.initialize(require('./simple.vert'));
+            const frag = new Shader(this._context, gl.FRAGMENT_SHADER, 'simple.frag');
+            frag.initialize(require('./simple.frag'));
 
-            this._ndcTriangle = new NdcFillingTriangle(this._context);
-            const aVertex = this._fillerProgram.attribute('a_vertex', 0);
-            this._ndcTriangle.initialize(aVertex);
+            this._program = new Program(this._context);
+            this._program.initialize([vert, frag]);
+            const aVertex = this._program.attribute('a_vertex', 0);
+
+            this._uLightViewProjection = this._shadowProgram.uniform('u_viewProjection');
+            this._uLightModel = this._shadowProgram.uniform('u_model');
+
+            this._uViewProjection = this._program.uniform('u_viewProjection');
+            this._uShadowViewProjection = this._program.uniform('u_lightViewProjection');
+            this._uModel = this._program.uniform('u_model');
+
+            this._cube = new Cube(this._context, 'cube');
+            this._cube.initialize(aVertex);
+
+            this._plane = new Plane(this._context, 'plane');
+            this._plane.initialize(aVertex);
+
+            this._modelMatrix = mat4.create();
+
+            this._camera = new Camera();
+            this._camera.center = vec3.fromValues(0.0, 0.0, 0.0);
+            this._camera.up = vec3.fromValues(0.0, 1.0, 0.0);
+            this._camera.eye = vec3.fromValues(6.0, 0.0, 0.0);
+            this._camera.near = 1.0;
+            this._camera.far = 32.0;
+
+            this._light = new Camera();
+            this._light.center = vec3.fromValues(0.0, 0.0, 0.0);
+            vec3.normalize(this._light.up, vec3.fromValues(0.0, 1.0, -1.0));
+            this._light.eye = vec3.fromValues(0.0, 6.0, 6.0);
+            this._light.near = 3.0;
+            this._light.far = 16.0;
 
             /* Create framebuffers, textures, and render buffers. */
 
             this._defaultFBO = new DefaultFramebuffer(this._context, 'DefaultFBO');
             this._defaultFBO.initialize();
 
-            this._fillerColorRenderTexture = new Texture2D(this._context, 'FillerColorRenderTexture');
-            this._fillerDepthRenderbuffer = new Renderbuffer(this._context, 'FillerDepthRenderbuffer');
-
-            this._fillerFBO = new Framebuffer(this._context, 'FillerFBO');
-
-            this._blurColorRenderTexture = new Texture2D(this._context, 'BlurColorRenderTexture');
-            this._blurDepthRenderbuffer = new Renderbuffer(this._context, 'BlurDepthRenderbuffer');
-
-            this._blurFBO = new Framebuffer(this._context, 'BlurFBO');
-
-            /* Create and configure accumulation pass. */
-
-            this._accumulate = new AccumulatePass(this._context);
-            this._accumulate.initialize(this._ndcTriangle);
-            this._accumulate.precision = this._framePrecision;
-            this._accumulate.texture = this._blurColorRenderTexture;
-            // this._accumulate.depthStencilAttachment = this._depthRenderbuffer;
-
-            /* Create and configure blit pass. */
-
-            this._blit = new BlitPass(this._context);
-            this._blit.initialize(this._ndcTriangle);
-            this._blit.readBuffer = gl2facade.COLOR_ATTACHMENT0;
-            this._blit.drawBuffer = gl.BACK;
-            this._blit.target = this._defaultFBO;
-
             /* Create and configure test navigation. */
 
-            this._testNavigation = new TestNavigation(() => this.invalidate(), mouseEventProvider);
+            this._navigation = new Navigation(callback, mouseEventProvider);
+            this._navigation.camera = this._camera;
 
             return true;
         }
@@ -127,71 +133,40 @@ namespace debug {
         protected onUninitialize(): void {
             super.uninitialize();
 
-            this._uFillerTexture = -1;
-            this._uSize = -1;
-            this._uKernelSize = -1;
+            this._cube.uninitialize();
+            this._plane.uninitialize();
 
-            this._fillerProgram.uninitialize();
-            this._blurProgram.uninitialize();
-
-            this._ndcTriangle.uninitialize();
-
-            this._fillerFBO.uninitialize();
-            this._blurFBO.uninitialize();
+            this._intermediateFramebuffer.uninitialize();
             this._defaultFBO.uninitialize();
-            this._fillerColorRenderTexture.uninitialize();
-            this._blurColorRenderTexture.uninitialize();
-            this._fillerDepthRenderbuffer.uninitialize();
-            this._blurDepthRenderbuffer.uninitialize();
-
-            this._blit.uninitialize();
+            this._intermediateColor.uninitialize();
+            this._intermediateDepth.uninitialize();
         }
 
 
         protected onUpdate(): boolean {
-            this._testNavigation.update();
+            this._navigation.update();
 
-            const redraw = this._testNavigation.altered;
-            this._testNavigation.reset();
-
-            if (!redraw && !this._altered.any) {
-                return false;
-            }
-
-            return redraw;
+            return true;
         }
 
         protected onPrepare(): void {
             const gl = this._context.gl;
             const gl2facade = this._context.gl2facade;
 
-            if (!this._fillerFBO.initialized) {
-                this._fillerColorRenderTexture.initialize(this._frameSize[0], this._frameSize[1],
-                    this._context.isWebGL2 ? gl.RGBA8 : gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE);
-                this._fillerDepthRenderbuffer.initialize(this._frameSize[0], this._frameSize[1], gl.DEPTH_COMPONENT16);
-                this._fillerFBO.initialize([[gl2facade.COLOR_ATTACHMENT0, this._fillerColorRenderTexture]
-                    , [gl.DEPTH_ATTACHMENT, this._fillerDepthRenderbuffer]]);
-            }
-            if (!this._blurFBO.initialized) {
-                this._blurColorRenderTexture.initialize(this._frameSize[0], this._frameSize[1],
-                    this._context.isWebGL2 ? gl.RGBA8 : gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE);
-                this._blurDepthRenderbuffer.initialize(this._frameSize[0], this._frameSize[1], gl.DEPTH_COMPONENT16);
-                this._blurFBO.initialize([[gl2facade.COLOR_ATTACHMENT0, this._blurColorRenderTexture]
-                    , [gl.DEPTH_ATTACHMENT, this._blurDepthRenderbuffer]]);
-            }
-            if (this._altered.frameSize) {
-                this._blurFBO.resize(this._frameSize[0], this._frameSize[1]);
-                this._fillerFBO.resize(this._frameSize[0], this._frameSize[1]);
-            }
-            if (this._altered.framePrecision) {
-                this._accumulate.precision = this._framePrecision;
+            if (!this._intermediateFramebuffer.initialized) {
+                this._intermediateColor.initialize(
+                    this._frameSize[0], this._frameSize[1], gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE);
+                this._intermediateDepth.initialize(this._frameSize[0], this._frameSize[1], gl.DEPTH_COMPONENT16);
+                this._intermediateFramebuffer.initialize([[gl2facade.COLOR_ATTACHMENT0, this._intermediateColor]
+                    , [gl.DEPTH_ATTACHMENT, this._intermediateDepth]]);
+
+            } else if (this._altered.frameSize) {
+                this._intermediateFramebuffer.resize(this._frameSize[0], this._frameSize[1]);
             }
 
             if (this._altered.clearColor) {
-                this._fillerFBO.clearColor(this._clearColor);
+                this._intermediateFramebuffer.clearColor(this._clearColor);
             }
-
-            this._accumulate.update();
 
             this._altered.reset();
         }
@@ -200,32 +175,38 @@ namespace debug {
             const gl = this._context.gl;
 
             gl.viewport(0, 0, this._frameSize[0], this._frameSize[1]);
+            gl.enable(gl.DEPTH_TEST);
 
-            this._fillerProgram.bind();
+            this._intermediateFramebuffer.clear(gl.COLOR_BUFFER_BIT, true, false);
+            //this._defaultFBO.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, true, false);
+            this._shadowProgram.bind();
 
-            this._fillerFBO.clear(gl.COLOR_BUFFER_BIT, true, false);
-            this._ndcTriangle.bind();
-            this._ndcTriangle.draw();
-            this._fillerFBO.unbind();
+            gl.uniformMatrix4fv(this._uLightModel, gl.GL_FALSE, this._modelMatrix);
+            gl.uniformMatrix4fv(this._uLightViewProjection, gl.GL_FALSE, this._light.viewProjection);
 
-            this._blurProgram.bind();
-            this._fillerColorRenderTexture.bind(gl.TEXTURE0);
-            gl.uniform1i(this._uFillerTexture, 0);
-            gl.uniform2iv(this._uSize, this._frameSize);
-            gl.uniform1i(this._uKernelSize, 20);
+            this._cube.bind();
+            this._cube.draw();
+            this._plane.bind();
+            this._plane.draw();
 
-            this._blurFBO.clear(gl.COLOR_BUFFER_BIT, true, false);
-            this._ndcTriangle.bind();
-            this._ndcTriangle.draw();
-            this._blurFBO.unbind();
+            this._defaultFBO.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, true, false);
+            this._program.bind();
 
-            this._accumulate.frame(frameNumber);
+            gl.uniformMatrix4fv(this._uModel, gl.GL_FALSE, this._modelMatrix);
+            gl.uniformMatrix4fv(this._uViewProjection, gl.GL_FALSE, this._camera.viewProjection);
+            gl.uniformMatrix4fv(this._uShadowViewProjection, gl.GL_FALSE, this._light.viewProjection);
+            this._intermediateColor.bind(gl.TEXTURE0);
+
+            this._cube.bind();
+            this._cube.draw();
+            this._plane.bind();
+            this._plane.draw();
+            this._plane.unbind();
+
+            this._program.unbind();
         }
 
         protected onSwap(): void {
-            this._blit.framebuffer = this._accumulate.framebuffer ?
-                this._accumulate.framebuffer : this._blit.framebuffer = this._blurFBO;
-            this._blit.frame();
         }
 
 
