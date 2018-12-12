@@ -11,6 +11,8 @@ precision lowp float;
 #endif
 
 uniform sampler2D u_shadowTexture;
+//uniform float u_nearPlane;
+//uniform float u_farPlane;
 
 varying vec3 v_vertex;
 varying vec4 v_shadowPosition;
@@ -36,10 +38,16 @@ float VSMCompare(sampler2D depths, vec2 uv, float compare)
     return clamp(max(p, p_max), 0.0, 1.0);
 }
 
+float linearizeDepth(float depth, float near, float far)
+{
+    return (2 * near) / (far + near - depth * (far - near));
+}
+
 
 void main(void)
 {
     vec3 shadowPosition = v_shadowPosition.xyz / v_shadowPosition.w * 0.5 + 0.5;
+    shadowPosition.z = linearizeDepth(shadowPosition.z, 3.0, 16.0);
 
     //float visibility = hardShadowCompare(u_shadowTexture, shadowPosition.xy, shadowPosition.z - 0.005);
     float visibility = VSMCompare(u_shadowTexture, shadowPosition.xy, shadowPosition.z - 0.005);
