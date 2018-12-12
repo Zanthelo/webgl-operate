@@ -105,8 +105,8 @@ namespace debug {
 
             this._camera = new Camera();
             this._camera.center = vec3.fromValues(0.0, 0.0, 0.0);
-            this._camera.up = vec3.fromValues(0.0, 1.0, 0.0);
-            this._camera.eye = vec3.fromValues(6.0, 0.0, 0.0);
+            vec3.normalize(this._camera.up, vec3.fromValues(-1.0, 1.0, 0.0));
+            this._camera.eye = vec3.fromValues(6.0, 6.0, 0.0);
             this._camera.near = 1.0;
             this._camera.far = 32.0;
 
@@ -124,8 +124,8 @@ namespace debug {
 
             /* Create and configure test navigation. */
 
-            this._navigation = new Navigation(callback, mouseEventProvider);
-            this._navigation.camera = this._camera;
+            //this._navigation = new Navigation(callback, mouseEventProvider);
+            //this._navigation.camera = this._camera;
 
             return true;
         }
@@ -144,7 +144,7 @@ namespace debug {
 
 
         protected onUpdate(): boolean {
-            this._navigation.update();
+            //this._navigation.update();
 
             return true;
         }
@@ -159,6 +159,8 @@ namespace debug {
                 this._intermediateDepth.initialize(this._frameSize[0], this._frameSize[1], gl.DEPTH_COMPONENT16);
                 this._intermediateFramebuffer.initialize([[gl2facade.COLOR_ATTACHMENT0, this._intermediateColor]
                     , [gl.DEPTH_ATTACHMENT, this._intermediateDepth]]);
+                this._intermediateFramebuffer.clearColor([1.0, 1.0, 1.0, 1.0]);
+                this._intermediateFramebuffer.clearDepth(1.0);
 
             } else if (this._altered.frameSize) {
                 this._intermediateFramebuffer.resize(this._frameSize[0], this._frameSize[1]);
@@ -176,6 +178,7 @@ namespace debug {
 
             gl.viewport(0, 0, this._frameSize[0], this._frameSize[1]);
             gl.enable(gl.DEPTH_TEST);
+            //gl.enable(gl.CULL_FACE);
 
             this._intermediateFramebuffer.clear(gl.COLOR_BUFFER_BIT, true, false);
             //this._defaultFBO.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, true, false);
@@ -184,10 +187,13 @@ namespace debug {
             gl.uniformMatrix4fv(this._uLightModel, gl.GL_FALSE, this._modelMatrix);
             gl.uniformMatrix4fv(this._uLightViewProjection, gl.GL_FALSE, this._light.viewProjection);
 
+            //gl.cullFace(gl.FRONT);
             this._cube.bind();
             this._cube.draw();
+            //gl.cullFace(gl.BACK);
             this._plane.bind();
             this._plane.draw();
+            //gl.disable(gl.CULL_FACE);
 
             this._defaultFBO.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, true, false);
             this._program.bind();

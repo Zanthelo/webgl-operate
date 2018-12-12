@@ -20,11 +20,12 @@ void main(void)
 {
     float visibility = 1.0;
     vec3 shadowPosition = v_shadowPosition.xyz / v_shadowPosition.w * 0.5 + 0.5;
-    if (texture(u_shadowTexture, shadowPosition.xy).r < shadowPosition.z - 0.005)
+    if (texture(u_shadowTexture, shadowPosition.xy).r < (shadowPosition.z - 0.005))
     {
         visibility = 0.5;
     }
-    vec4 basicColor = vec4(vec3(v_vertex.y * 0.5 + 0.5), 1.0);
-    basicColor.r += visibility;
-    fragColor = basicColor;
+
+    float basicColor = clamp(1.0 - (v_vertex.y * 0.5 + 0.5), 0.25, 0.75);
+
+    fragColor = vec4(vec3(basicColor * visibility), 1.0);
 }
