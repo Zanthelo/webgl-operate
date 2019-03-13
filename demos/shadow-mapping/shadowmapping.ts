@@ -140,6 +140,8 @@ class ShadowMappingRenderer extends Renderer {
     this._plane.initialize(aVertex);
 
     this._gaussFilter = new GaussFilter(this._context);
+    this._gaussFilter.kernelSize = 31;
+    this._gaussFilter.standardDeviation = 15;
     this._gaussFilter.initialize();
 
     return true;
@@ -219,6 +221,7 @@ class ShadowMappingRenderer extends Renderer {
       this._light.viewport = [this._frameSize[0], this._frameSize[1]];
     }
     if (this._altered.canvasSize) {
+      console.log('Es ist passiert');
       this._camera.aspect = this._canvasSize[0] / this._canvasSize[1];
       this._light.aspect = this._canvasSize[0] / this._canvasSize[1];
     }
@@ -268,7 +271,7 @@ class ShadowMappingRenderer extends Renderer {
     this._defaultFBO.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT, true, false);
     this._shadowMappingProgram.bind();
 
-    this._shadowMapTexture.bind(gl.TEXTURE0);
+    this._blurTexture.bind(gl.TEXTURE0);
     gl.uniformMatrix4fv(this._uCameraViewProjectionMatrix, gl.GL_FALSE, this._camera.viewProjection);
     gl.uniformMatrix4fv(this._uShadowViewMatrix, gl.GL_FALSE, this._light.view);
     gl.uniformMatrix4fv(this._uShadowProjectionMatrix, gl.GL_FALSE, this._light.projection);

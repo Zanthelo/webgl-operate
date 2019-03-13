@@ -6,6 +6,7 @@ precision highp float;
 
 
 in vec4 v_lightVertex;
+in vec3 v_vertex;
 
 uniform float u_LightFarPlane;
 uniform mat4 u_LightProjectionMatrix;
@@ -30,7 +31,7 @@ float VSMCompare(sampler2D depths, vec2 uv, float compare, float offset)
 {
   vec2 moments = texture(depths, uv).rg;
 
-  float p = smoothstep(compare + offset, compare, moments.x);
+  float p = smoothstep(compare + offset, compare + offset, moments.x);
   float variance = max(moments.y - moments.x * moments.x, - 0.00001);
   float d = compare - moments.x;
   float p_max = linstep(0.2, 1.0, variance / (variance + d*d));
@@ -60,8 +61,8 @@ void main(void)
     vec2 lightUV = (projLightVertex.xy / projLightVertex.w) * 0.5 + 0.5;
     float lightDepth = clamp(length(v_lightVertex.xyz) / u_LightFarPlane, 0.0, 1.0);
 
-    //float visibility = VSMCompare2(u_depthsTexture, lightUV, lightDepth,  -0.002);
-    float visibility = hardShadowCompare(u_depthsTexture, lightUV, lightDepth, -0.001);
+    float visibility = VSMCompare(u_depthsTexture, lightUV, lightDepth,  -0.05);
+    //float visibility = hardShadowCompare(u_depthsTexture, lightUV, lightDepth, -0.001);
 
-    fragColor = vec4(vec3(visibility), 1.0);
+    fragColor = vec4(vec3(visibility) * (v_vertex.y > -1.5 ? 0.5 : 1.0), 1.0);
 }
